@@ -113,6 +113,7 @@ from openedx.core.djangoapps.credit.api import (
     is_credit_course,
     is_user_eligible_for_credit
 )
+from openedx.core.lib.courses import get_course_by_id
 from openedx.core.djangoapps.enrollments.api import add_enrollment
 from openedx.core.djangoapps.enrollments.permissions import ENROLL_IN_COURSE
 from openedx.core.djangoapps.models.course_details import CourseDetails
@@ -1715,6 +1716,8 @@ def render_xblock(request, usage_key_string, check_if_enrolled=True):
     set_custom_attribute('usage_key', usage_key_string)
     set_custom_attribute('block_type', usage_key.block_type)
 
+    # import pdb ; pdb.set_trace()
+
     requested_view = request.GET.get('view', 'student_view')
     if requested_view != 'student_view' and requested_view != 'public_view':  # lint-amnesty, pylint: disable=consider-using-in
         return HttpResponseBadRequest(
@@ -1820,6 +1823,69 @@ def render_xblock(request, usage_key_string, check_if_enrolled=True):
             'render_course_wide_assets': True,
 
             **optimization_flags,
+        }
+        return render_to_response('courseware/courseware-chromeless.html', context)
+
+
+@require_http_methods(["GET"])
+@ensure_valid_usage_key
+@xframe_options_exempt
+@transaction.non_atomic_requests
+def render_video_xblock(request, usage_key_string):
+    """
+    Returns an HttpResponse with HTML content for the Video xBlock with the given usage_key.
+    The returned HTML is a chromeless rendering of the Video xBlock (excluding content of the containing courseware).
+    """
+    view = 'public_view'
+
+    usage_key = UsageKey.from_string(usage_key_string)
+    usage_key = usage_key.replace(course_key=modulestore().fill_in_run(usage_key.course_key))
+    course_key = usage_key.course_key
+
+    # TODO! verify that usage key belongs to Video else raise 404
+
+    # TODO! verify that video is made public by course author in studio -- a model needs to be added for this in either
+    #       course_overview app or anyother places where it make sense
+
+    with modulestore().bulk_operations(course_key):
+        try:
+            course = get_course_by_id(course_key, 0)
+        except CourseAccessRedirect:
+            raise Http404("Course not found.")  # lint-amnesty, pylint: disable=raise-missing-from
+
+        block, _ = get_module_by_usage_id(
+            request,
+            str(course_key),
+            str(usage_key),
+            disable_staff_debug_info=True,
+            course=course,
+            will_recheck_access=True
+        )
+
+        fragment = block.render(view, context={})
+
+        context = {
+            'fragment': fragment,
+            'course': course,
+            'disable_accordion': False,
+            'allow_iframing': True,
+            'disable_header': False,
+            'disable_footer': False,
+            'disable_window_wrap': True,
+            'edx_notes_enabled': True,
+            # 'enable_completion_on_view_service': False,
+            # 'staff_access': False,
+            # 'xqa_server': '', #settings.FEATURES.get('XQA_SERVER', 'http://your_xqa_server.com'),
+            # 'missed_deadlines': missed_deadlines,
+            # 'missed_gated_content': missed_gated_content,
+            # 'has_ended': course.has_ended(),
+            # 'web_app_course_url': reverse(COURSE_HOME_VIEW_NAME, args=[course.id]),
+            # 'on_courseware_page': True,
+            # 'verified_upgrade_link': verified_upgrade_deadline_link(request.user, course=course),
+            'is_learning_mfe': True,
+            # 'is_mobile_app': False,
+            # 'reset_deadlines_url': reverse(RESET_COURSE_DEADLINES_NAME),
+            # 'render_course_wide_assets': True,
         }
         return render_to_response('courseware/courseware-chromeless.html', context)
 
