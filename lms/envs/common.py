@@ -3191,6 +3191,8 @@ INSTALLED_APPS = [
 
     # Content Library LTI 1.3 Support.
     'pylti1p3.contrib.django.lti1p3_tool_config',
+
+    'common.djangoapps.leaderboard.apps.LeaderboardConfig',
 ]
 
 ######################### CSRF #########################################
