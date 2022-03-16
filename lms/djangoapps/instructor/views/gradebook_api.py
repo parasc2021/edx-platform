@@ -5,12 +5,15 @@ which is currently use by ccx and instructor apps.
 
 
 import math
+import itertools
 
 from django.contrib.auth.models import User  # lint-amnesty, pylint: disable=imported-auth-user
 from django.db import transaction
 from django.urls import reverse
 from django.views.decorators.cache import cache_control
 from opaque_keys.edx.keys import CourseKey
+from django.db.models import Q
+from common.djangoapps.student.models import CourseAccessRole
 
 from common.djangoapps.edxmako.shortcuts import render_to_response
 from lms.djangoapps.courseware.courses import get_course_with_access
@@ -66,7 +69,7 @@ def calculate_page_info(offset, total_students):
     }
 
 
-def get_grade_book_page(request, course, course_key):
+def get_grade_book_page(request, course, course_key, skip_admins=False):
     """
     Get student records per page along with page information i.e current page, total pages and
     offset information.
@@ -77,26 +80,38 @@ def get_grade_book_page(request, course, course_key):
         courseenrollment__course_id=course_key,
         courseenrollment__is_active=1
     ).order_by('username').select_related("profile")
-
+    if skip_admins:
+        admin_users = list(set(CourseAccessRole.objects.filter(
+            course_id=course_key).values_list("user")))
+        admin_users = list(itertools.chain(*admin_users))
+        enrolled_students = enrolled_students.exclude(
+            Q(is_staff=True) |
+            Q(is_superuser=True) |
+            Q(id__in=admin_users)
+        )
     total_students = enrolled_students.count()
     page = calculate_page_info(current_offset, total_students)
     offset = page["offset"]
     total_pages = page["total_pages"]
 
-    if total_pages > 1:
+    if not skip_admins and total_pages > 1:
         # Apply limit on queryset only if total number of students are greater then MAX_STUDENTS_PER_PAGE_GRADE_BOOK.
         enrolled_students = enrolled_students[offset: offset + MAX_STUDENTS_PER_PAGE_GRADE_BOOK]
 
     with modulestore().bulk_operations(course.location.course_key):
-        student_info = [
-            {
-                'username': student.username,
-                'id': student.id,
-                'email': student.email,
-                'grade_summary': CourseGradeFactory().read(student, course).summary
-            }
-            for student in enrolled_students
-        ]
+        student_info = list()
+        for student in enrolled_students:
+            course_grade = CourseGradeFactory().read(student, course)
+            student_info.append(
+                {
+                    'username': student.username,
+                    'id': student.id,
+                    'email': student.email,
+                    'grade_summary': course_grade.summary,
+                    'courseware_summary': course_grade.customized_chapter_grades
+                }
+            )
+
     return student_info, page
 
 

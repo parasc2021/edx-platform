@@ -1020,6 +1020,18 @@ class CourseFields:  # lint-amnesty, pylint: disable=missing-class-docstring
         ),
         scope=Scope.settings
     )
+    weight = String(
+        display_name=_("Weight"),
+        help=_("Add weight for the course."),
+        default='',
+        scope=Scope.settings
+    )
+    batch = String(
+        display_name=_("Batch"),
+        help=_("Select one of the batch for the course."),
+        default='',
+        scope=Scope.settings
+    )
 
 
 class CourseBlock(

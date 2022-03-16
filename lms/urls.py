@@ -1015,3 +1015,7 @@ if getattr(settings, 'PROVIDER_STATES_URL', None):
             name='courseware_xblock_handler_provider_state',
         )
     ]
+
+urlpatterns += [
+    path('', include('common.djangoapps.custom_reports.urls')),
+]

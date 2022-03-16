@@ -12,6 +12,7 @@ import logging
 import string
 import random
 import re
+from collections import OrderedDict
 
 import edx_api_doc_tools as apidocs
 from django.conf import settings
@@ -22,6 +23,7 @@ from django.db import IntegrityError, transaction
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden, HttpResponseNotFound
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.db.models import Q
 from django.utils.decorators import method_decorator
 from django.utils.html import strip_tags
 from django.utils.translation import gettext as _
@@ -39,11 +41,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from submissions import api as sub_api  # installed from the edx-submissions repository
 from xmodule.modulestore.django import modulestore
+from common.djangoapps.edxmako.shortcuts import render_to_string
 
 from common.djangoapps.course_modes.models import CourseMode
 from common.djangoapps.student import auth
 from common.djangoapps.student.api import is_user_enrolled_in_course
 from common.djangoapps.student.models import (
+    CourseAccessRole,
     ALLOWEDTOENROLL_TO_ENROLLED,
     ALLOWEDTOENROLL_TO_UNENROLLED,
     CourseEnrollment,
@@ -128,7 +132,9 @@ from .tools import (
     set_due_date_extension,
     strip_if_string,
 )
+
 from .. import permissions
+from ..utils import check_sga_in_subsection
 
 log = logging.getLogger(__name__)
 
@@ -3414,3 +3420,277 @@ def _get_certificate_for_user(course_key, student):
         )
 
     return certificate
+
+
+@transaction.non_atomic_requests
+@require_POST
+@ensure_csrf_cookie
+@cache_control(no_cache=True, no_store=True, must_revalidate=True)
+@require_course_permission(permissions.CAN_RESEARCH)
+@common_exceptions_400
+def get_sga_report_data(request, course_id):
+    """
+    Return SGA Report Data
+    """
+    from lms.djangoapps.instructor.utils import get_module_for_student
+    course_key = CourseKey.from_string(course_id)
+    sga_blocks = modulestore().get_items(course_key, qualifiers={"category": "edx_sga"})
+    sga_blocks.sort(key=lambda x: x.display_name)
+    admin_users = set(
+        CourseAccessRole.objects.filter(course_id=course_key).values_list("user")
+    )
+    enrollments = CourseEnrollment.objects.filter(
+        course_id=course_key, is_active=True
+    ).exclude(
+        Q(user__is_staff=True) | Q(user__is_superuser=True) | Q(user_id__in=admin_users)
+    )
+    enrollments = list(enrollments)
+    enrollments.sort(key=lambda x: x.user.username)
+    sga_block_dict = OrderedDict()
+    students_enrollments = list()
+    for enrollment in enrollments:
+        student_attempt = dict()
+        for block in sga_blocks:
+            sga_block_dict.update({str(block.location): block.display_name})
+            module = get_module_for_student(enrollment.user, block.location)
+            if not module.student_state().get("uploaded", None):
+                sumbission_msg = "NA"
+            elif module.score:
+                sumbission_msg = module.score
+            else:
+                sumbission_msg = "NG"
+            student_attempt.update({str(block.location): sumbission_msg})
+        students_enrollments.append({enrollment.user.username: student_attempt})
+
+    template = render_to_string(
+        "instructor/instructor_dashboard_2/sga_report_data.html",
+        {
+            "course_key": course_key,
+            "enrollments": students_enrollments,
+            "sga_block_dict": sga_block_dict,
+        },
+    )
+    return JsonResponse({"data": template}, status=200)
+
+
+@transaction.non_atomic_requests
+@ensure_csrf_cookie
+@cache_control(no_cache=True, no_store=True, must_revalidate=True)
+@require_course_permission(permissions.CAN_RESEARCH)
+def get_sga_report(request, course_id):
+    """
+    Responds with JSON if CSV is not required. contains a SGA Report.
+    Arguments:
+        course_id
+    """
+    from lms.djangoapps.instructor.utils import get_module_for_student
+
+    course_key = CourseKey.from_string(course_id)
+
+    sga_blocks = modulestore().get_items(course_key, qualifiers={"category": "edx_sga"})
+    sga_blocks.sort(key=lambda x: x.display_name)
+    admin_users = set(
+        CourseAccessRole.objects.filter(course_id=course_key).values_list("user")
+    )
+    enrollments = CourseEnrollment.objects.filter(
+        course_id=course_key, is_active=True
+    ).exclude(
+        Q(user__is_staff=True) | Q(user__is_superuser=True) | Q(user_id__in=admin_users)
+    )
+    enrollments = list(enrollments)
+    enrollments.sort(key=lambda x: x.user.username)
+    sga_block_dict = OrderedDict()
+    students_enrollments = list()
+    for enrollment in enrollments:
+        student_attempt = dict()
+        for block in sga_blocks:
+            sga_block_dict.update({str(block.location): block.display_name})
+            module = get_module_for_student(enrollment.user, block.location)
+            if not module.student_state().get("uploaded", None):
+                sumbission_msg = "NA"
+            elif module.score:
+                sumbission_msg = module.score
+            else:
+                sumbission_msg = "NG"
+            student_attempt.update({str(block.location): sumbission_msg})
+        students_enrollments.append({enrollment.user.username: student_attempt})
+
+    header_data = [
+        "",
+    ]
+    for key, display_name in sga_block_dict.items():
+        header_data.append(display_name)
+
+    row_data = []
+    for enrollment in students_enrollments:
+        keys_list = list(enrollment.keys())
+        enrollment_data = [keys_list[0]]
+        for key, display_name in sga_block_dict.items():
+            data = enrollment.get(keys_list[0])
+            enrollment_data.append(data.get(key))
+        row_data.append(enrollment_data)
+    report_name = "{} SGA Report.csv".format(course_key.course)
+
+    return instructor_analytics_csvs.create_csv_response(
+        report_name, header_data, row_data
+    )
+
+
+@transaction.non_atomic_requests
+@ensure_csrf_cookie
+@cache_control(no_cache=True, no_store=True, must_revalidate=True)
+@require_course_permission(permissions.CAN_RESEARCH)
+def get_gradebook_report(request, course_id):
+    """
+    Responds with JSON if CSV is not required. contains a Grade Book Report.
+    Arguments:
+        course_id
+    """
+    from lms.djangoapps.instructor.views.gradebook_api import get_grade_book_page
+    from lms.djangoapps.instructor.utils import get_module_for_student
+
+    course_key = CourseKey.from_string(course_id)
+
+    course = get_course_with_access(request.user, "staff", course_key, depth=None)
+    student_info, page = get_grade_book_page(
+        request, course, course_key, skip_admins=True
+    )
+    sga_blocks = modulestore().get_items(course_key, qualifiers={"category": "edx_sga"})
+    sga_blocks.sort(key=lambda x: x.display_name)
+    admin_users = set(
+        CourseAccessRole.objects.filter(course_id=course_key).values_list("user")
+    )
+    enrollments = CourseEnrollment.objects.filter(
+        course_id=course_key, is_active=True
+    ).exclude(
+        Q(user__is_staff=True) | Q(user__is_superuser=True) | Q(user_id__in=admin_users)
+    )
+    sga_block_dict = OrderedDict()
+    students_enrollments = OrderedDict()
+    for enrollment in enrollments:
+        student_attempt = dict()
+        for block in sga_blocks:
+            sga_block_dict.update({str(block.location): block.display_name})
+            module = get_module_for_student(enrollment.user, block.location)
+            if not module.student_state().get("uploaded", None):
+                sumbission_msg = "NS"
+            elif module.score:
+                sumbission_msg = "{0:.0f}%".format(module.score)
+            else:
+                sumbission_msg = "NG"
+            student_attempt.update({str(block.location): sumbission_msg})
+        students_enrollments[enrollment.user.username] = student_attempt
+
+    header_data = ["", "Total"]
+    templateSummary = student_info[0]["courseware_summary"]
+    for chapter in templateSummary:
+        if not chapter["display_name"] == "hidden":
+            for section in chapter["sections"]:
+                if section.graded and not check_sga_in_subsection(
+                    section.location, request.user
+                ):
+                    header_data.append(section.display_name)
+
+    for key, display_name in sga_block_dict.items():
+        header_data.append(display_name)
+    header_data.append("Status")
+
+    row_data = []
+    for student in student_info:
+        not_attempted = not_graded = False
+        total_score = "{0:.0f}%".format(100 * student["grade_summary"]["percent"])
+        student_info = [student["username"], total_score]
+        for chapter in student["courseware_summary"]:
+            if not chapter["display_name"] == "hidden":
+                for section in chapter["sections"]:
+                    if section.graded and not check_sga_in_subsection(
+                        section.location, request.user
+                    ):
+                        earned = section.all_total.earned
+                        total = section.all_total.possible
+                        score = (
+                            "{0:.0%}".format(float(earned) / total)
+                            if earned > 0 and total > 0
+                            else 0
+                        )
+                        student_info.append(score)
+                        if not section._should_persist_per_attempted():
+                            not_attempted = True
+
+        for key, display_name in sga_block_dict.items():
+            data = students_enrollments.get(student["username"])
+            not_attempted = True if data.get(key) == "NS" else False
+            not_graded = True if data.get(key) == "NG" else False
+            student_info.append(data.get(key))
+        if not_attempted:
+            student_info.append("I")
+        elif not_graded:
+            student_info.append("C")
+        else:
+            student_info.append("")
+        row_data.append(student_info)
+
+    report_name = "{} Gradebook.csv".format(course_key.course)
+    return instructor_analytics_csvs.create_csv_response(
+        report_name, header_data, row_data
+    )
+
+
+@transaction.non_atomic_requests
+@require_POST
+@ensure_csrf_cookie
+@cache_control(no_cache=True, no_store=True, must_revalidate=True)
+@require_course_permission(permissions.CAN_RESEARCH)
+@common_exceptions_400
+def get_grade_book_data(request, course_id):
+    """
+    Return Grade Book Data
+    """
+    from lms.djangoapps.instructor.views.gradebook_api import get_grade_book_page
+    from lms.djangoapps.instructor.utils import get_module_for_student
+
+    course_key = CourseKey.from_string(course_id)
+    course = get_course_with_access(request.user, "staff", course_key, depth=None)
+    student_info, page = get_grade_book_page(
+        request, course, course_key, skip_admins=True
+    )
+
+    sga_blocks = modulestore().get_items(course_key, qualifiers={"category": "edx_sga"})
+    sga_blocks.sort(key=lambda x: x.display_name)
+    admin_users = set(
+        CourseAccessRole.objects.filter(course_id=course_key).values_list("user")
+    )
+    enrollments = CourseEnrollment.objects.filter(
+        course_id=course_key, is_active=True
+    ).exclude(
+        Q(user__is_staff=True) | Q(user__is_superuser=True) | Q(user_id__in=admin_users)
+    )
+    sga_block_dict = OrderedDict()
+    students_enrollments = OrderedDict()
+    for enrollment in enrollments:
+        student_attempt = dict()
+        for block in sga_blocks:
+            sga_block_dict.update({str(block.location): block.display_name})
+            module = get_module_for_student(enrollment.user, block.location)
+            if not module.student_state().get("uploaded", None):
+                sumbission_msg = "NS"
+            elif module.score:
+                sumbission_msg = "{0:.0f}%".format(module.score)
+            else:
+                sumbission_msg = "NG"
+            student_attempt.update({str(block.location): sumbission_msg})
+        students_enrollments[enrollment.user.username] = student_attempt
+    template = render_to_string(
+        "instructor/instructor_dashboard_2/grade_book_data.html",
+        {
+            "students": student_info,
+            "course": course,
+            "course_id": course_key,
+            "enrollments": students_enrollments,
+            "sga_block_dict": sga_block_dict,
+            "ordered_grades": sorted(
+                course.grade_cutoffs.items(), key=lambda i: i[1], reverse=True
+            ),
+        },
+    )
+    return JsonResponse({"data": template}, status=200)

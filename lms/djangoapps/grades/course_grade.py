@@ -101,6 +101,30 @@ class CourseGradeBase:
         return grades
 
     @lazy
+    def customized_chapter_grades(self):
+        """
+        Returns a list of chapters, each containing its subsection grades,
+        display name, and url name.
+        """
+        chapter_grades = []
+        course_structure = self.course_data.structure
+        for chapter_key in course_structure.get_children(self.course_data.location):
+            chapter = course_structure[chapter_key]
+            chapter_subsection_grades = []
+            children = course_structure.get_children(chapter_key)
+            for subsection_key in children:
+                chapter_subsection_grades.append(
+                    self._subsection_grade_factory.create(course_structure[subsection_key], read_only=True)
+                )
+
+            chapter_grades.append({
+                'display_name': block_metadata_utils.display_name_with_default_escaped(chapter),
+                'url_name': block_metadata_utils.url_name_for_block(chapter),
+                'sections': chapter_subsection_grades
+            })
+        return chapter_grades
+
+    @lazy
     def subsection_grades(self):
         """
         Returns an ordered dictionary of subsection grades,

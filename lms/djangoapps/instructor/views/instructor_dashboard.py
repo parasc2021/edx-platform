@@ -3,17 +3,19 @@ Instructor Dashboard Views
 """
 
 
+import pytz
 import datetime
 import logging
 import uuid
 from functools import reduce
 from unittest.mock import patch
+from collections import OrderedDict
 
-import pytz
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponseServerError
 from django.urls import reverse
+from django.db.models import Q
 from django.utils.html import escape
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_noop
@@ -29,7 +31,7 @@ from xblock.fields import ScopeIds
 
 from common.djangoapps.course_modes.models import CourseMode, CourseModesArchive
 from common.djangoapps.edxmako.shortcuts import render_to_response
-from common.djangoapps.student.models import CourseEnrollment
+from common.djangoapps.student.models import CourseEnrollment, CourseAccessRole
 from common.djangoapps.student.roles import (
     CourseFinanceAdminRole,
     CourseInstructorRole,
@@ -204,6 +206,17 @@ def instructor_dashboard_2(request, course_id):  # lint-amnesty, pylint: disable
     if certs_enabled and access['admin']:
         sections.append(_section_certificates(course))
 
+    sga_blocks = modulestore().get_items(
+        course_key, qualifiers={'category': 'edx_sga'}
+    )
+    sga_blocks = [
+            block for block in sga_blocks if block.parent is not None
+        ]
+
+    if len(sga_blocks) > 0:
+        sections.append(_section_sga_reports(course, access))
+
+    sections.append(_section_grade_book(course, access))
     openassessment_blocks = modulestore().get_items(
         course_key, qualifiers={'category': 'openassessment'}
     )
@@ -629,6 +642,30 @@ def _section_data_download(course, access):
     }
     if not access.get('data_researcher'):
         section_data['is_hidden'] = True
+    return section_data
+
+
+def _section_sga_reports(course, access):
+    """ Provide data for the corresponding dashboard section """
+    course_key = course.id
+    section_data = {
+        'section_key': 'sga_reports',
+        'section_display_name': _('SGA Report'),
+        'access': access,
+        'course_key': course_key,
+    }
+    return section_data
+
+
+def _section_grade_book(course, access):
+    """ Provide data for the corresponding Course grade book """
+    course_key = course.id
+    section_data = {
+        'section_key': 'grade_book',
+        'section_display_name': _('Grade Book'),
+        'access': access,
+        'course_key': course_key
+    }
     return section_data
 
 

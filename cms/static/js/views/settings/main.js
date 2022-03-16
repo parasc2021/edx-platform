@@ -30,6 +30,8 @@ define(['js/views/validation', 'codemirror', 'underscore', 'jquery', 'jquery.ui'
                    options = options || {};
         // fill in fields
                    this.$el.find('#course-language').val(this.model.get('language'));
+                   this.$el.find("#weight").val(this.model.get('weight'));
+                   this.$el.find("#batch").val(this.model.get('batch'));
                    this.$el.find('#course-organization').val(this.model.get('org'));
                    this.$el.find('#course-number').val(this.model.get('course_id'));
                    this.$el.find('#course-name').val(this.model.get('run'));
@@ -159,6 +161,8 @@ define(['js/views/validation', 'codemirror', 'underscore', 'jquery', 'jquery.ui'
                    this.learning_info_view.render();
                    this.instructor_info_view.render();
 
+                   this.$el.find('#' + this.fieldToSelectorMap['weight']).val(this.model.get('weight'));
+                   this.$el.find('#' + this.fieldToSelectorMap['batch']).val(this.model.get('batch'));
                    return this;
                },
                fieldToSelectorMap: {
@@ -188,7 +192,9 @@ define(['js/views/validation', 'codemirror', 'underscore', 'jquery', 'jquery.ui'
                    course_settings_learning_fields: 'course-settings-learning-fields',
                    add_course_learning_info: 'add-course-learning-info',
                    add_course_instructor_info: 'add-course-instructor-info',
-                   course_learning_info: 'course-learning-info'
+                   course_learning_info: 'course-learning-info',
+                   weight: 'weight',
+                   batch: 'batch',
                },
 
                addLearningFields: function() {
@@ -317,6 +323,8 @@ define(['js/views/validation', 'codemirror', 'underscore', 'jquery', 'jquery.ui'
                    case 'course-subtitle':
                    case 'course-duration':
                    case 'course-description':
+                   case 'weight':
+                   case 'batch':
                    case 'course-short-description':
                        this.setField(event);
                        break;

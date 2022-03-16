@@ -252,6 +252,15 @@ class CourseOverview(TimeStampedModel):
         course_overview.proctoring_escalation_email = course.proctoring_escalation_email
         course_overview.allow_proctoring_opt_out = course.allow_proctoring_opt_out
 
+        from common.djangoapps.course_manage.models import CourseManage
+        weight = CourseDetails.fetch_about_attribute(course.id, 'weight')
+        batch = CourseDetails.fetch_about_attribute(course.id, 'batch')
+        data_dict = {
+            "weight": weight,
+            "batch": batch,
+        }
+        CourseManage.create_or_update(course.id, data_dict)
+
         if not CatalogIntegration.is_enabled():
             course_overview.language = course.language
 

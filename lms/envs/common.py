@@ -1243,7 +1243,7 @@ AUTHENTICATION_BACKENDS = [
     'bridgekeeper.backends.RulePermissionBackend',
 ]
 
-STUDENT_FILEUPLOAD_MAX_SIZE = 4 * 1000 * 1000  # 4 MB
+STUDENT_FILEUPLOAD_MAX_SIZE = 150 * 1000 * 1000  # 4 MB
 MAX_FILEUPLOADS_PER_INPUT = 20
 
 # Set request limits for maximum size of a request body and maximum number of GET/POST parameters. (>=Django 1.10)
@@ -3192,6 +3192,7 @@ INSTALLED_APPS = [
     # Content Library LTI 1.3 Support.
     'pylti1p3.contrib.django.lti1p3_tool_config',
 
+    'common.djangoapps.course_manage.apps.CourseManageConfig',
     'common.djangoapps.leaderboard.apps.LeaderboardConfig',
 ]
 
@@ -3621,7 +3622,7 @@ FILE_UPLOAD_STORAGE_PREFIX = 'submissions_attachments'
 #   failure threshold then the account will be locked for a configurable amount of seconds (30 minutes) which will
 #   prevent additional login attempts until this time period has passed. This setting is related with
 #   MAX_FAILED_LOGIN_ATTEMPTS_LOCKOUT_PERIOD_SECS and only used when ENABLE_MAX_FAILED_LOGIN_ATTEMPTS is enabled.
-MAX_FAILED_LOGIN_ATTEMPTS_ALLOWED = 6
+MAX_FAILED_LOGIN_ATTEMPTS_ALLOWED = 25
 
 # .. setting_name: MAX_FAILED_LOGIN_ATTEMPTS_LOCKOUT_PERIOD_SECS
 # .. setting_default: 30 * 60

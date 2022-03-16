@@ -97,6 +97,8 @@ from openedx.core.djangoapps.xmodule_django.models import NoneToEmptyManager
 from openedx.core.djangolib.model_mixins import DeletableByUserValue
 from openedx.core.toggles import ENTRANCE_EXAMS
 
+from common.djangoapps.leaderboard.models import Batch
+
 log = logging.getLogger(__name__)
 AUDIT_LOG = logging.getLogger("audit")
 SessionStore = import_module(settings.SESSION_ENGINE).SessionStore  # pylint: disable=invalid-name
@@ -624,6 +626,7 @@ class UserProfile(models.Model):
     profile_image_uploaded_at = models.DateTimeField(null=True, blank=True)
     phone_regex = RegexValidator(regex=r'^\+?1?\d*$', message="Phone number can only contain numbers.")
     phone_number = models.CharField(validators=[phone_regex], blank=True, null=True, max_length=50)
+    batch = models.ForeignKey(Batch, null=True, blank=True, on_delete=models.SET_NULL)
 
     @property
     def has_profile_image(self):

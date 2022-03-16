@@ -116,6 +116,8 @@ from .library import (
     should_redirect_to_library_authoring_mfe
 )
 
+from common.djangoapps.leaderboard.models import Batch
+
 log = logging.getLogger(__name__)
 User = get_user_model()
 
@@ -1210,7 +1212,9 @@ def settings_handler(request, course_key_string):  # lint-amnesty, pylint: disab
                             'show_min_grade_warning': show_min_grade_warning,
                         }
                     )
-
+            settings_context.update({
+                'batches': Batch.objects.all()
+            })
             return render_to_response('settings.html', settings_context)
         elif 'application/json' in request.META.get('HTTP_ACCEPT', ''):
             if request.method == 'GET':

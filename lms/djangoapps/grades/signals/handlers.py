@@ -41,6 +41,8 @@ from openedx.core.djangoapps.signals.signals import (
     COURSE_GRADE_NOW_PASSED
 )
 
+from common.djangoapps.leaderboard.signals.signals import CUSTOM_COURSE_GRADE_CHANGED
+
 log = getLogger(__name__)
 
 
@@ -252,7 +254,13 @@ def recalculate_course_grade_only(sender, course, course_structure, user, **kwar
     Updates a saved course grade, but does not update the subsection
     grades the user has in this course.
     """
-    CourseGradeFactory().update(user, course=course, course_structure=course_structure)
+    updated_grade = CourseGradeFactory().update(user, course=course, course_structure=course_structure)
+    CUSTOM_COURSE_GRADE_CHANGED.send(
+        sender=None,
+        user=user,
+        course=course,
+        grade=updated_grade,
+    )
 
 
 @receiver(ENROLLMENT_TRACK_UPDATED)
