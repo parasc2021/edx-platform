@@ -44,7 +44,7 @@ def write_csv_file(filename, data):
     """
     Write data into given csv file.
     """
-    with open(filename, "wb") as csv_file:
+    with open(filename, "w") as csv_file:
         writer = csv.writer(csv_file, delimiter=",")
         writer.writerows(data)
 
@@ -62,7 +62,6 @@ def generate_grade_report_csv(username, batch):
     file_name = "GRADE_REPORT_{batch}_{time}.csv".format(
         batch=batch.name, time=current_time
     )
-    file_name = "REPORT_{time}.csv".format(time=current_time)
     file_path = dir_path + file_name
 
     users = User.objects.filter(is_active=True, profile__batch=batch).order_by(
@@ -97,7 +96,8 @@ def generate_grade_report_csv(username, batch):
             else:
                 student_info.append(score)
             try:
-                weighted_score = (score * float(course.course_weight)) / 100
+                course_manage = CourseManage.objects.get(course_id=course.id)
+                weighted_score = (score * float(course_manage.weight)) / 100
                 total_score += weighted_score
             except Exception as e:
                 total_score += 0
